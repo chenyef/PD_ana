@@ -1,0 +1,31 @@
+
+
+data = load([pathname,filename]);
+data = data(67000:97000)
+Fs = 1000;     % Sampling frequency
+T = 1/Fs;       % Sampling period
+L = length(data);      % Length of signal
+t = (0:L-1)*T;  % Time vector
+
+% figure in time-domain 
+figure
+plot(t,data)
+grid;
+xlabel('Time [s]');
+ylabel ('Amplitude');
+title('Time Domain')
+% FFT  
+Y = fft(data);
+f = Fs*(0:(L/2))/L;
+P = abs(Y/L);
+figure
+plot(f,2*P(1:L/2+1),'-r')
+xlim([0,10])
+grid
+xlabel('Frequency [Hz]')
+ylabel('Amplitude')
+title('Frequency Domain')
+
+figure
+pspectrum(data,Fs,'spectrogram','FrequencyLimits',[0 10],'FrequencyResolution',10)
+title('Time-Freqency')

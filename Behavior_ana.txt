@@ -1,0 +1,120 @@
+rm(list=ls()) #Remove all datasets and parameters in the environment
+
+#Load all required packeges
+library(ggplot2)
+library(dplyr)
+library(readxl)
+library(MASS)
+library(viridis)
+
+#Read function file
+source("C:\\Users\\cyf19\\Desktop\\RSCRIPTS\\RotationFunctionschangeimmobile.R")
+
+#Choose parameters.txt file
+print("Please choose your Parameter.txt file.")
+parameters <- read.table(file.choose(),header = FALSE, sep = "=", stringsAsFactors = F)
+
+#Read parameters from parameters.txt file
+for (i in c(1:nrow(parameters))){
+  assign(parameters[i,1],parameters[i,2])
+}
+
+#Set working directory
+setwd(RawFileFolder)
+#Read .csv files as your raw data
+datafiles <- list.files(pattern = ".csv")
+#create a new directory for statistical files
+dir.create("Statistics")
+
+for (rawfile in datafiles){
+  rawdata <- read.csv(file = rawfile, header = TRUE)
+  rawdata <- DataTransform(rawdata)
+  
+  xrange <- c(floor(min(rawdata$x)), ceiling(max(rawdata$x)))
+  yrange <- c(floor(min(rawdata$y)), ceiling(max(rawdata$y)))
+  zrange <- c(floor(min(rawdata$z)), ceiling(max(rawdata$z)))
+  
+  
+  sta.attr <- c("Ipsi","Contra", "NR","Percent.IR","Percent.CR","Percent.NR","IR.Con","Percent.IR.Con","CR.Con","Percent.CR.Con","Distance.IR","Distance.CR","Distance.NR","Speed.Ipsi", "Speed.Contra","Speed.NR","Time.HighPlace","Percent.HighPlace","Distance","ChangeDirection.All","ChangeDirection.Continue","Immobile")
+  sta_matrix <- data.frame(matrix(vector(), 0,length(sta.attr) ,
+                                  dimnames=list(c(), sta.attr)),
+                           stringsAsFactors=F)
+  
+  
+  name <- paste0(RawFileFolder,"Statistics/",unlist(strsplit(rawfile,"[.]"))[1])
+  #timespan <- ceiling(max(rawdata$time)/(as.numeric(TimeSlot)*60))
+  rawdata <- rawdata[order(rawdata$time,decreasing = F),]
+  tmin = ceiling(rawdata$time[1]/(as.numeric(TimeSlot)*60))
+  tmax = ceiling(rawdata$time[nrow(rawdata)]/(as.numeric(TimeSlot)*60))
+  if (tmin == 0){tmin = 1}
+  for (i in tmin:tmax){
+    group1 <- rawdata[rawdata$time/(as.numeric(TimeSlot)*60) <= i & rawdata$time/(as.numeric(TimeSlot)*60) >i-1,]
+    #group1_side <- sideview[sideview$time/(as.numeric(TimeSlot)*60) <= i & sideview$time/(as.numeric(TimeSlot)*60) >i-1,]
+    #pdf(paste0(RawFileFolder,"Statistics/",unlist(strsplit(rawfile,"[.]"))[1],"_",i,"_",Sys.Date(),".pdf"))
+    #SideViewPlot(group1_side)
+    #dev.off()
+    if (nrow(group1) == 0){next}
+    group <- DataPreprocessing(group1)
+    group1 <- group[[1]]
+    group1_low <- group[[2]]
+    
+    databin <- RotationSelection(group1_low)
+    databin <- RotationDirection(databin)
+    databin.CR <- SelectionWithDirection(databin,"Contralateral", 1.5)
+    databin.IR <- SelectionWithDirection(databin,"Ipsilateral", 1.5)
+    
+    databin <- databin[(databin$time %in% databin.CR$time) | (databin$time %in% databin.IR$time),]
+    
+    # pdf(paste0(RawFileFolder,"Statistics/",unlist(strsplit(rawfile,"[.]"))[1],"_",i,"_Rotation_",Sys.Date(),".pdf"))
+    #RotationPlot(databin, group1, Colors = c("red","blue"))
+    #dev.off()
+    
+    
+    setEPS()
+    postscript(paste0(RawFileFolder,"Statistics/",unlist(strsplit(rawfile,"[.]"))[1],"_",i,"_Rotation_Point_",Sys.Date(),".eps"))
+    RotationPoint(databin,group1,Colors = c("red","blue"))
+    dev.off()
+    
+    # pdf(paste0(RawFileFolder,"Statistics/",unlist(strsplit(rawfile,"[.]"))[1],"_",i,"_Rotation_Point_",Sys.Date(),".pdf"))
+    # RotationPoint(databin,group1,Colors = c("red","blue"))
+    # dev.off()
+    
+    
+    data.continues <- ContinuesRotation(databin)
+    
+    CD <- ChangeDirection(databin, 1)
+    changepoint.all <- CD[[1]]
+    changepoint.continue <- CD[[2]]
+    
+    
+    IR <- nrow(databin.IR)
+    IR.con <- nrow(databin.IR[databin.IR$time %in% data.continues$time,])
+    PIR.con <- IR.con/IR
+    CR <- nrow(databin.CR)
+    CR.con <- nrow(databin.CR[databin.CR$time %in% data.continues$time,])
+    PCR.con <- CR.con/CR
+    NR <- nrow(group1) - CR - IR
+    PIR <- IR/(IR+CR+NR)
+    PCR <- CR/(IR+CR+NR)
+    PNR <- 1 - PIR - PCR
+    DisIR <- sum(databin[databin$direction == "Ipsilateral",]$ED)
+    DisCR <- sum(databin[databin$direction == "Contralateral",]$ED)
+    DisNR <- sum(group1$ED) - DisIR - DisCR
+    SI <- as.numeric(mean(databin[databin$direction == "Ipsilateral",]$speed))
+    SC <- as.numeric(mean(databin[databin$direction == "Contralateral",]$speed))
+    SN <- as.numeric(mean(group1[!(group1$time %in% databin$time & group1$speed >= 10),]$speed))
+    TH <- nrow(group1[group1$z > as.numeric(HighPlace),])
+    PH <- TH/nrow(group1)
+    DisAll <- sum(group1$ED)
+    IM <- nrow(ImmobileSelection(group1,thred = 10 , last.time = 1))
+    
+    statistics <- c(IR, CR,NR,PIR,PCR,PNR,IR.con,PIR.con,CR.con,PCR.con,DisIR,DisCR,DisNR,SI, SC,SN,TH,PH,DisAll,changepoint.all,changepoint.continue, IM)
+    sta_matrix <- rbind(sta_matrix,statistics)
+    rownames(sta_matrix)[nrow(sta_matrix)] <- i
+    
+  }
+  
+  colnames(sta_matrix) <- sta.attr
+  write.csv(sta_matrix,file = paste0(name,"_statistics.csv"))
+}
+
