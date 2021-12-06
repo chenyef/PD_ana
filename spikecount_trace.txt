@@ -1,0 +1,87 @@
+%Function: plot spikerate every 10 min
+
+%define the uint and channels need to be plotted
+unit=2;
+chan=[33 52 53 54 55];
+%chan=[33 34 35 36 37 38 39 40 49 50 51 52 53 54 55 56];
+
+%load files
+filename={'... .plx'};
+path='C:\Data\';
+
+rate=zeros(length(chan),10);
+
+for i = 1:10
+    fl=[path,filename{i}];
+    for j = 1:length(chan)
+        
+        [n, ts] = plx_ts(fl,chan(j), unit);
+        rate(j,i) = n/ts(end);
+    end
+
+end
+
+h1=figure('position',[100,100,800,600]);
+title('Unit b')
+plot(rate','LineWidth',1.5);
+%set(gca,'XTick',[0:1;9]);
+legend(chan);
+
+
+%Fucntion: plot response traces for given channels
+
+%define channels
+chan_name={'WB33','WB34','WB35','WB36','WB37','WB38','WB39','WB40','WB49','WB50','WB51','WB52','WB53','WB54','WB55','WB56'};
+%load file names
+filename={'... .plx'};
+path='C:\Data\...';
+
+label={'Baseline','0-10min','10-20min','20-30min','30-40min','40-50min','50-60min','60-70min','70-80min','80-90min','90-100min'};
+Rp=0.1;
+Rs=40;
+t1=0; %plot start time
+t2=240; %plot end time
+amp=1.2e4;
+
+for ch=1:length(chan_name)
+    h1=figure('position',[100,100,800,660]);
+
+    for i=1:11
+
+        fl=[path,filename{i}];
+        [raw_freq, raw_n, raw_ts, raw_fn, raw_ad] = plx_ad(fl,chan_name{ch});
+
+
+        % High frequency component
+        % bandpass raw_ad
+        fs=raw_freq;
+        fmax=fs/2;
+        f_low=300/fmax;
+        f_high=5000/fmax;
+        [b,a]=ellip(2,Rp,Rs,[f_low f_high],'bandpass');
+        s0=raw_ad(t1*fs+1:t2*fs);
+        % %wavelet de-noise
+        % [thr,sorh,keepapp] = ddencmp('den','wv',s0);
+        % s0 = wdencmp('gbl',s0,'db3',2,thr,sorh,keepapp);
+
+        wave_high = filter(b,a,s0');
+        s_time=t1*fs+1:1:t2*fs;
+        s_time=s_time/fs;
+        % wave_high = filter(b,a,raw_ad');
+
+        subplot(6,2,i);
+        %plot(raw_times,wave_high);
+        plot(s_time,wave_high);
+        axis([t1,t2,-amp,amp]);
+        title(label{i});
+        hold on;
+    end
+
+    figname=[chan_name{ch},' 0-100 min fisrt 240s'];
+    print(figname,'-dpdf','-bestfit')
+    close(h1);    
+end
+clear
+
+
+
